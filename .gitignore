@@ -1,0 +1,12 @@
+# macOS
+.DS_Store
+
+# Dependency directories
+/vendor/
+
+# IDE/editor files
+.idea/
+.vscode/
+
+# Logs
+*.log
