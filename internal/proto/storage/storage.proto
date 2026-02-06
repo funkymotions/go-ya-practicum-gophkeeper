@@ -1,0 +1,65 @@
+edition = "2024";
+
+package storage;
+
+option go_package = "internal/proto/storage";
+
+message ListDataBlocksRequest {
+  string client_id = 1;
+}
+
+enum EncProfile {
+  PROFILE_V1 = 0;
+  PROFILE_V2 = 1;
+  PROFILE_V3 = 2;
+}
+
+message DataBlock {
+  int32 block_id = 1;
+  string title = 2;
+  bytes chiphertext = 3;
+  bytes salt = 4;
+  bytes nonce = 5;
+  EncProfile profile = 6;
+  BlockType type = 7;
+}
+
+message SaveDataBlockRequest {
+  string title = 1;
+  bytes chiphertext = 2;
+  bytes salt = 3;
+  bytes nonce = 4;
+  EncProfile profile = 5;
+  int32 type_id = 6;
+}
+
+message SaveDataBlockResponse {}
+
+message ListDataBlocksResponse {
+  repeated DataBlock data_blocks = 1;
+}
+
+message BlockType {
+  int32 id = 1;
+  string type_name = 2;
+  string description = 3;
+}
+
+message GetBlockTypesRequest {}
+
+message GetBlockTypesResponse {
+  repeated BlockType  block_types = 1;
+}
+
+// StorageService manages user storage and private keys.
+service StorageService {
+
+  // SaveDataBlock saves a data block with encrypted payload for the user.
+  rpc SaveDataBlock(SaveDataBlockRequest) returns (SaveDataBlockResponse);
+
+  // ListDataBlocks returns a list of data blocks stored for the user with encrypted payload.
+  rpc ListDataBlocks(ListDataBlocksRequest) returns (stream ListDataBlocksResponse);
+
+  // ListBlockTypes returns a list of available block types.
+  rpc ListBlockTypes(GetBlockTypesRequest) returns (GetBlockTypesResponse);
+}

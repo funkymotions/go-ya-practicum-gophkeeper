@@ -1,0 +1,26 @@
+edition = "2023";
+
+package subscription;
+
+option go_package = "internal/proto/subscription";
+
+message SubscribeRequest {
+  string client_id = 1;
+}
+
+message SubscribeResponse {}
+
+message UnsubscribeRequest {
+  string client_id = 1;
+}
+
+message UnsubscribeResponse {}
+
+// SubscriptionService manages client subscriptions to storage updates.
+service SubscriptionService {
+  // Subscribe allows the client to subscribe to storage updates.
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse);
+
+  // Unsubscribe allows the client to unsubscribe from storage updates.
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+}

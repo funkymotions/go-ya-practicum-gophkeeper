@@ -1,0 +1,33 @@
+edition = "2023";
+
+package auth;
+
+option go_package = "internal/proto/auth";
+
+message AuthRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message AuthResponse {
+  string token = 1;
+}
+
+message RegisterRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message RegisterResponse {
+  string token = 1;
+}
+
+// AuthService handles user authentication and token issuance.
+service AuthService {
+  // Authenticate verifies user credentials and returns an access token.
+  rpc Authenticate (AuthRequest) returns (AuthResponse);
+
+  // Register creates a new user account and returns the user ID and access token.
+  rpc Register (RegisterRequest) returns (RegisterResponse);
+}
+
