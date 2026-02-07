@@ -2,164 +2,308 @@ package client
 
 import (
 	"context"
-	"fmt"
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/client/types"
-	grpcclient "github.com/funkymotions/go-ya-practicum-gophkeeper/internal/infrastructure/grpc"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/client/view"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/config"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/model"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/ports"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/proto/auth"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/proto/storage"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/proto/subscription"
+	clientrepo "github.com/funkymotions/go-ya-practicum-gophkeeper/internal/repository/client"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/service/client"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/backoff"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/connectivity"
 )
 
-type modelView struct {
-	title     string
-	choices   []types.NamedTeaModel // items on the to-do list
-	cursor    int                   // which to-do list item our cursor is pointing at
-	selected  map[int]struct{}
-	MainModel types.NamedTeaModel
-	PrevModel types.NamedTeaModel
-	State     *types.State
-	g         *grpc.ClientConn
+type services struct {
+	authService    ports.ClientAuthService
+	storageService ports.ClientStorageService
+	sub            ports.ClientSubscriber
 }
 
-func New() *modelView {
-	g, err := grpc.NewClient(
-		"127.0.0.1:8080",
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithConnectParams(grpc.ConnectParams{
-			Backoff: backoff.Config{
-				BaseDelay:  time.Second,
-				Multiplier: 1,
-				MaxDelay:   time.Second,
-			},
-		}),
-	)
-	if err != nil {
-		panic(err)
+type ClientApp struct {
+	rootModel        tea.Model
+	program          *tea.Program
+	grpcConn         *grpc.ClientConn
+	appChan          chan os.Signal
+	isOnline         chan bool
+	blocksChan       chan []*model.Block
+	blocksErrChan    chan error
+	blocks           *[]*model.Block
+	state            *types.State
+	services         services
+	listenerChan     chan struct{}
+	tickerChan       chan struct{}
+	streamChan       chan struct{}
+	isListenerDone   chan struct{}
+	isTickerDone     chan struct{}
+	isStreamDone     chan struct{}
+	blocksUpdateChan chan struct{}
+	errUpdateChan    chan error
+	isStreamStarted  bool
+	buildDate        string
+	clientVersion    string
+	ctx              context.Context
+	cancelFn         context.CancelFunc
+}
+
+func NewClientApp(
+	c config.ClientConf,
+	g *grpc.ClientConn,
+	appChan chan os.Signal,
+	listenerChan chan struct{},
+	tickerChan chan struct{},
+	streamChan chan struct{},
+	isListenerDone chan struct{},
+	isTickerDone chan struct{},
+	isStreamDone chan struct{},
+	buildDate string,
+	clientVersion string,
+) *ClientApp {
+	return &ClientApp{
+		grpcConn:         g,
+		appChan:          appChan,
+		state:            types.NewState(),
+		isOnline:         make(chan bool, 2),
+		blocksChan:       make(chan []*model.Block, 1),
+		blocksErrChan:    make(chan error, 1),
+		blocks:           &[]*model.Block{},
+		blocksUpdateChan: make(chan struct{}, 1),
+		errUpdateChan:    make(chan error, 1),
+		listenerChan:     listenerChan,
+		tickerChan:       tickerChan,
+		streamChan:       streamChan,
+		isListenerDone:   isListenerDone,
+		isTickerDone:     isTickerDone,
+		isStreamDone:     isStreamDone,
+		ctx:              nil,
+		cancelFn:         nil,
+		buildDate:        buildDate,
+		clientVersion:    clientVersion,
 	}
+}
 
-	go func() {
-		g.WaitForStateChange(context.Background(), g.GetState())
-	}()
+func (app *ClientApp) Init() error {
+	storageGRPCClient := storage.NewStorageServiceClient(app.grpcConn)
+	subGRPCClient := subscription.NewSubscriptionServiceClient(app.grpcConn)
+	authGRPCClient := auth.NewAuthServiceClient(app.grpcConn)
 
-	state := types.NewState()
+	// offline
+	offlineRepo := clientrepo.NewOfflineRepository(app.state)
 
-	// defer g.Close()
-	client := grpcclient.NewGRPCClient(g)
-	registerModel := NewAuthModel(
-		constructorArgs{
-			grpcClient: client,
-			viewType:   RegisterView,
-			state:      state,
+	// services
+	app.services.authService = client.NewClientAuthService(authGRPCClient)
+	app.services.sub = client.NewClientSubscriptionService(app.state, subGRPCClient)
+	app.services.storageService = client.NewClientStorageService(
+		client.ClientStorageServiceArgs{
+			Client:            storageGRPCClient,
+			State:             app.state,
+			OfflineRepository: offlineRepo,
 		},
 	)
 
-	authModel := NewAuthModel(
-		constructorArgs{
-			grpcClient: client,
-			viewType:   AuthView,
-			state:      state,
+	// models
+	regModel := view.NewAuthModel(
+		view.AuthModelArgs{
+			Service:  app.services.authService,
+			ViewType: view.RegisterViewType,
+			State:    app.state,
 		},
 	)
 
-	storageModel := NewStorageModel(state)
+	authModel := view.NewAuthModel(
+		view.AuthModelArgs{
+			Service:  app.services.authService,
+			ViewType: view.AuthViewType,
+			State:    app.state,
+		},
+	)
 
-	mainModel := &modelView{
-		title:    "Main Menu",
-		choices:  []types.NamedTeaModel{authModel, registerModel, storageModel},
-		selected: make(map[int]struct{}),
-		State:    state,
-		g:        g,
-	}
+	storageModel := view.NewStorageModel(
+		view.StorageModelArgs{
+			State: app.state,
+			AddBlockModel: view.NewAddBlockView(
+				view.AddBlockViewArgs{
+					State:   app.state,
+					Service: app.services.storageService,
+				},
+			),
+			ListBlockModel: view.NewBlockListView(
+				view.BlockListViewArgs{
+					State:       app.state,
+					Service:     app.services.storageService,
+					Blocks:      app.blocks,
+					UpdateCh:    app.blocksUpdateChan,
+					ErrUpdateCh: app.errUpdateChan,
+				},
+			),
+		},
+	)
 
-	return mainModel
-}
+	ctx, cancel := context.WithCancel(context.Background())
+	app.ctx = ctx
+	app.cancelFn = cancel
+	app.RestoreAppState()
+	app.pollClientState()
+	go app.listenForOnline()
+	app.StartBlockFetching()
+	app.rootModel = view.NewRootModel(
+		view.RootModelArgs{
+			AppChan:        app.appChan,
+			RegisterModel:  regModel,
+			AuthModel:      authModel,
+			StorageModel:   storageModel,
+			State:          app.state,
+			StorageService: app.services.storageService,
+			BuildDate:      app.buildDate,
+			ClientVersion:  app.clientVersion,
+		},
+	)
 
-func (cv *modelView) Init() tea.Cmd {
 	return nil
 }
 
-func (cv *modelView) GetTitle() string {
-	return cv.title
+func (app *ClientApp) RestoreAppState() error {
+	err := app.services.storageService.StartupFromFile()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
-func (cv *modelView) SetPrevModel(m types.NamedTeaModel) {
-	cv.PrevModel = m
-}
-
-func (cv *modelView) IsAuthorizedModel() bool {
-	return false
-}
-
-func (cv *modelView) GetState() *types.State {
-	return cv.State
-}
-
-func (cv *modelView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			return cv, tea.Quit
-		case "up", "k":
-			if cv.cursor > 0 {
-				// if cv.State.IsAuthorized != cv.choices[cv.cursor-1].IsAuthorizedModel() {
-				// break
-				// }
-				cv.cursor--
+func (app *ClientApp) listenForOnline() {
+	ctx, cancel := context.WithCancel(context.Background())
+	for {
+		select {
+		case <-app.listenerChan:
+			cancel()
+			app.isListenerDone <- struct{}{}
+			return
+		case isOnline := <-app.isOnline:
+			if isOnline {
+				err := app.services.storageService.SyncOfflineBlocks(ctx)
+				if err != nil {
+					continue
+				}
 			}
-		case "down", "j":
-			if cv.cursor < len(cv.choices)-1 {
-				// if cv.State.IsAuthorized != cv.choices[cv.cursor+1].IsAuthorizedModel() {
-				// break
-				// }
-				cv.cursor++
-			}
-		case "enter", " ":
-			cv.choices[cv.cursor].SetPrevModel(cv)
-
-			return cv.choices[cv.cursor], cv.choices[cv.cursor].Init()
 		}
 	}
-
-	return cv, nil
 }
 
-func (cv *modelView) View() string {
-	s := fmt.Sprintf("== %s ==\n\n", cv.title)
-	connReady := "✅"
-	connNotReady := "❌"
-	connState := cv.g.GetState().String()
-	status := ""
-	if connState != "READY" {
-		status = connNotReady
-	} else {
-		status = connReady
+func (app *ClientApp) StartBlockFetching() {
+	go func() {
+		for {
+			select {
+			case <-app.streamChan:
+				app.cancelFn()
+				// streaming stopped, exit goroutine
+				if app.state.IsOnline {
+					app.services.sub.Unsubscribe()
+				}
+				close(app.blocksChan)
+				close(app.errUpdateChan)
+				close(app.blocksUpdateChan)
+				close(app.blocksErrChan)
+				app.isStreamDone <- struct{}{}
+				return
+			case blocks := <-app.blocksChan:
+				*app.blocks = blocks
+				select {
+				case app.blocksUpdateChan <- struct{}{}:
+				default:
+				}
+			case err := <-app.blocksErrChan:
+				select {
+				case app.errUpdateChan <- err:
+				default:
+				}
+			case isOnline := <-app.isOnline:
+				if app.isStreamStarted {
+					continue
+				}
+				if !isOnline {
+					// retrieve offline blocks from a service
+					go app.services.storageService.StartBlockStream(
+						app.ctx,
+						app.blocksChan,
+						app.blocksErrChan,
+					)
+					continue
+				}
+
+				err := app.services.sub.Subscribe()
+				if err != nil {
+					continue
+				}
+
+				app.isStreamStarted = true
+				go app.services.storageService.StartBlockStream(
+					app.ctx,
+					app.blocksChan,
+					app.blocksErrChan,
+				)
+			}
+		}
+	}()
+}
+
+func (app *ClientApp) pollClientState() {
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		app.pingServer()
+		for {
+			select {
+			case <-app.tickerChan:
+				app.isTickerDone <- struct{}{}
+				return
+			case <-ticker.C:
+				err := app.pingServer()
+				if err != nil {
+					continue
+				}
+			}
+		}
+	}()
+}
+
+func (app *ClientApp) Start() error {
+	app.program = tea.NewProgram(app.rootModel)
+	if _, err := app.program.Run(); err != nil {
+		return err
 	}
 
-	s += "GRPC State: " + status + " IsAuthorized: " + fmt.Sprintf("%v", cv.State.IsAuthorized) + "\n\n"
+	return nil
+}
 
-	for i, choice := range cv.choices {
-		cursor := " " // no cursor
-		if cv.cursor == i {
-			cursor = ">" // cursor
-		}
+func (app *ClientApp) Close() error {
+	app.program.Quit()
 
-		checked := " " // not selected
-		if _, ok := cv.selected[i]; ok {
-			checked = "x" // selected
-		}
+	return app.grpcConn.Close()
+}
 
-		// if cv.State.IsAuthorized != choice.IsAuthorizedModel() {
-		// s += ""
-		// } else {
-		s += cursor + " [" + checked + "] " + choice.GetTitle() + "\n"
-		// }
+func (app *ClientApp) pingServer() error {
+	err := app.services.storageService.Ping(context.Background())
+	if err != nil {
+		app.state.IsOnline = false
+		app.isOnline <- false
+		app.isOnline <- false
+
+		return err
 	}
 
-	s += "\n[!]Press q to quit.\n"
+	isOnline := app.grpcConn.GetState() == connectivity.Ready
+	app.state.IsOnline = isOnline
 
-	return s
+	// send isOffline twice
+	app.isOnline <- isOnline
+	app.isOnline <- isOnline
+
+	return nil
 }

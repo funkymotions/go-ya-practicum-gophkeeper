@@ -8,7 +8,8 @@ import (
 
 type subscriptionRepository struct {
 	// used map to store subscribers for user apps
-	// for permanent state it's better to user in-memory DB like Redis or similar limiting key exp time
+	// for permanent state it's better to user in-memory DB
+	// like Redis or similar limiting key exp time
 	subscribers map[int]map[string]chan []*model.Block
 	mu          sync.RWMutex
 }

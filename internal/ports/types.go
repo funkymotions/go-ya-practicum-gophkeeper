@@ -5,7 +5,10 @@ import (
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/repository"
 )
 
-type UserRepository interface {
-	repository.Repository[model.User]
-	ReadByUsername(userName string) (*model.User, error)
+type TypesService interface {
+	ReadAllTypes() ([]*model.Type, error)
+}
+
+type TypesRepository interface {
+	repository.Repository[model.Type]
 }

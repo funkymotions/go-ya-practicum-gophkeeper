@@ -1,6 +1,9 @@
 package utils
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -11,8 +14,11 @@ type MyClaims struct {
 
 func IssueJWTToken(userID int, secret []byte) ([]byte, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, MyClaims{
-		RegisteredClaims: jwt.RegisteredClaims{},
-		UserID:           userID,
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		},
+		UserID: userID,
 	})
 
 	tokenString, err := token.SignedString(secret)
@@ -38,4 +44,16 @@ func CheckJWTToken(tokenString string, secret []byte) (*MyClaims, error) {
 	}
 
 	return claims, nil
+}
+
+func ParseUnverifiedJWT(tokenString string) (*MyClaims, error) {
+	token, _, err := jwt.NewParser().ParseUnverified(tokenString, &MyClaims{})
+	if err != nil {
+		return nil, err
+	}
+	if claims, ok := token.Claims.(*MyClaims); ok {
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token claims")
 }

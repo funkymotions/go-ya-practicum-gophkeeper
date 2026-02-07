@@ -1,16 +1,21 @@
 package types
 
-import "github.com/google/uuid"
+import (
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/model"
+	"github.com/google/uuid"
+)
 
 type State struct {
-	IsAuthorized bool   `json:"is_authorized"`
-	Token        string `json:"token"`
-	UserID       int    `json:"user_id"`
-	ClientID     string `json:"client_id"`
+	Token    string         `json:"token"`
+	UserID   int            `json:"user_id"`
+	ClientID string         `json:"client_id"`
+	IsOnline bool           `json:"-"`
+	Blocks   []*model.Block `json:"-"`
 }
 
 func NewState() *State {
 	return &State{
 		ClientID: uuid.NewString(),
+		IsOnline: false,
 	}
 }

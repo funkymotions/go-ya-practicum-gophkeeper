@@ -43,3 +43,9 @@ v3: N: 1<<16, P: 1, R:8 bytes, KeyLen: 32 bytes
 
 ### Physical datamodel
 <img src="database.png" alt="database schema" width="400" />
+
+
+#### Client build:
+```
+go build -o client -ldflags "-X main.buildDate=$(date '+%Y/%m/%d') -X main.clientVersion=1.0" ./cmd/client/main.go
+```

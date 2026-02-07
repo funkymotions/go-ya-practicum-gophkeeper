@@ -5,17 +5,23 @@ import (
 
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/model"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/ports"
+	"go.uber.org/zap"
 )
 
 type subscriptionService struct {
 	subscriptionRepository ports.SubscriptionRepository
+	logger                 *zap.SugaredLogger
 }
 
 var _ ports.SubscriptionService = (*subscriptionService)(nil)
 
-func NewSubscriptionService(subscriptionRepository ports.SubscriptionRepository) *subscriptionService {
+func NewSubscriptionService(
+	subscriptionRepository ports.SubscriptionRepository,
+	logger *zap.SugaredLogger,
+) *subscriptionService {
 	return &subscriptionService{
 		subscriptionRepository: subscriptionRepository,
+		logger:                 logger,
 	}
 }
 
@@ -34,7 +40,11 @@ func (s *subscriptionService) NotifySubscribers(userID int, blocks []*model.Bloc
 		case ch <- blocks:
 		default:
 			// If the channel is full, skip sending to avoid blocking
-			fmt.Printf("Skipping subscriber %s: channel is full\n", clientID)
+			s.logger.Warnf(
+				"Skipping notification to client due to full cahnnel",
+				"userID", fmt.Sprintf("%d", userID),
+				"clientID", clientID,
+			)
 		}
 	}
 }

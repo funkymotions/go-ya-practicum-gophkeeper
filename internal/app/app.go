@@ -9,6 +9,7 @@ import (
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/config"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/infrastructure/database"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/interceptor"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/model"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/proto/auth"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/proto/storage"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/proto/subscription"
@@ -29,15 +30,14 @@ type Application struct {
 	conf        *config.Server
 	srv         *grpc.Server
 	logger      *zap.SugaredLogger
+	isDoneChan  chan struct{}
 }
 
-// TODO: add logger
-// TODO: add graceful shutdown
-// TODO: add migrations
-func New(config *config.Config) *Application {
+func New(config *config.Config, isDone chan struct{}) *Application {
 	app := &Application{}
 	app.conf = &config.Server
 	dbConfig := config.Database
+	app.isDoneChan = isDone
 	db, err := database.NewSQLDriver(&dbConfig)
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
@@ -51,17 +51,23 @@ func New(config *config.Config) *Application {
 	defer l.Sync()
 	app.logger = l.Sugar()
 
+	blocksSqlRepo := repository.NewSQLRepository[model.Block](db)
+	typesSqlRepo := repository.NewSQLRepository[model.Type](db)
+	usersSqlRepo := repository.NewSQLRepository[model.User](db)
+
 	// repositories
-	storageRepository := repository.NewStorageRepository(db)
-	userRepository := repository.NewUserRepository(db)
+	storageRepository := repository.NewBlockRepository(blocksSqlRepo)
 	subscriptionRepository := repository.NewSubscriptionRepository()
+	typesRepository := repository.NewTypeRepository(typesSqlRepo)
+	userRepository := repository.NewUserRepository(usersSqlRepo)
 
 	// services
-	subscriptionService := service.NewSubscriptionService(subscriptionRepository)
+	subscriptionService := service.NewSubscriptionService(subscriptionRepository, app.logger)
 	storageService := service.NewStorageService(
 		service.StorageServiceArgs{
 			StorageRepository:   storageRepository,
 			SubscriptionService: subscriptionService,
+			TypesRepository:     typesRepository,
 			Logger:              app.logger,
 		},
 	)
@@ -74,8 +80,15 @@ func New(config *config.Config) *Application {
 		},
 	)
 
+	typesService := service.NewTypesService(typesRepository, app.logger)
+
 	// gRPC servers
-	grpcStorageServer := apigrpc.NewStorageGRPCServer(storageService, subscriptionService)
+	grpcStorageServer := apigrpc.NewStorageGRPCServer(
+		storageService,
+		subscriptionService,
+		typesService,
+	)
+
 	grpcAuthServer := apigrpc.NewAuthGRPCServer(authService)
 	grpcSubscriptionServer := apigrpc.NewSubscriptionGRPCServer(subscriptionService)
 	app.grpcServers.storageServer = grpcStorageServer
@@ -95,9 +108,8 @@ func New(config *config.Config) *Application {
 }
 
 func (a *Application) Start() error {
-	log.Printf("Starting gRPC server...")
+	a.logger.Infow("Starting gRPC server", "host", a.conf.Host, "port", a.conf.Port)
 	addr := fmt.Sprintf("%s:%d", a.conf.Host, a.conf.Port)
-
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -106,8 +118,8 @@ func (a *Application) Start() error {
 	return a.srv.Serve(l)
 }
 
-// TODO: make graceful shutdown
-func (a *Application) Shudown() {
-	a.srv.GracefulStop()
-	log.Println("gRPC servers stopped")
+func (app *Application) Shutdown() {
+	app.srv.Stop()
+	app.isDoneChan <- struct{}{}
+	app.logger.Info("gRPC servers stopped")
 }

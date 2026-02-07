@@ -1,6 +1,7 @@
-package blocks
+package primitive
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,10 +20,15 @@ type FileBlock struct {
 	Title       string
 	inputs      []textinput.Model
 	isSaved     bool
+	isSaving    bool
 	err         error
+	errChan     chan error
 	focused     int
 	PrevModel   types.NamedTeaModel
-	saveBlockFn SaveBlockFn
+	saveBlockCb SaveBlockFn
+	state       *types.State
+	ctx         context.Context
+	cancelFn    context.CancelFunc
 }
 
 func NewFileBlock(args BlockArgs) *FileBlock {
@@ -48,7 +54,8 @@ func NewFileBlock(args BlockArgs) *FileBlock {
 		Type:        args.Type,
 		Title:       args.Title,
 		inputs:      []textinput.Model{inputDescription, inputFilePath, masterPasswordInput},
-		saveBlockFn: args.SaveBlockCb,
+		saveBlockCb: args.SaveBlockCb,
+		state:       args.State,
 	}
 }
 
@@ -57,6 +64,8 @@ func (fb *FileBlock) SetPrevModel(m types.NamedTeaModel) {
 }
 
 func (fb *FileBlock) Init() tea.Cmd {
+	fb.ctx, fb.cancelFn = context.WithCancel(context.Background())
+
 	return textinput.Blink
 }
 
@@ -65,6 +74,7 @@ func (fb *FileBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
+			fb.cancelFn()
 			return fb.PrevModel, nil
 		case "enter":
 			if fb.focused == len(fb.inputs)-1 {
@@ -72,7 +82,6 @@ func (fb *FileBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				filePath := fb.inputs[1].Value()
 				if !filepath.IsAbs(filePath) {
 					fb.err = fmt.Errorf("please provide an absolute file path")
-
 					return fb, nil
 				}
 
@@ -83,7 +92,6 @@ func (fb *FileBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if len(content) > fileMaxSize {
 					fb.err = fmt.Errorf("file size exceeds the maximum allowed size of %d bytes", fileMaxSize)
-
 					return fb, nil
 				}
 
@@ -91,32 +99,49 @@ func (fb *FileBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				key, err := utils.ExtractKeyFromPassword(masterPassword, utils.ProfileMedium)
 				if err != nil {
 					fb.err = err
-
 					return fb, nil
 				}
 
 				ciphertext, nonce, err := utils.EncryptWithPassword([]byte(masterPassword), content, key)
 				if err != nil {
 					fb.err = err
-
 					return fb, nil
 				}
 
-				err = fb.saveBlockFn(title, fb.Type.ID, utils.ProfileMedium, ciphertext, key.Salt, nonce)
-				if err != nil {
-					fb.err = err
-
-					return fb, nil
+				fb.errChan = make(chan error)
+				b := model.Block{
+					Title:   title,
+					TypeID:  fb.Type.ID,
+					Data:    ciphertext,
+					Salt:    key.Salt,
+					Nonce:   nonce,
+					Profile: string(utils.ProfileMedium),
+					Type:    &fb.Type,
 				}
 
-				fb.isSaved = true
+				fb.isSaving = true
+				go fb.saveBlockCb(fb.ctx, b, fb.errChan)
 
-				return fb, nil
+				return fb, listenForSaveBlockResult(fb.ctx, fb.errChan)
 			}
 
 			fb.focused++
 			fb.inputs[fb.focused].Focus()
 		}
+	case saveBlockResultMsg:
+		close(fb.errChan)
+		err := error(msg.err)
+		if err != nil {
+			fb.err = err
+			fb.isSaved = false
+			fb.isSaving = false
+			return fb, nil
+		}
+
+		fb.isSaving = false
+		fb.isSaved = true
+
+		return fb, nil
 	}
 
 	var cmd tea.Cmd

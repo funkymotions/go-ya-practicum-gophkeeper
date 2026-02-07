@@ -990,6 +990,92 @@ func (b0 GetBlockTypesResponse_builder) Build() *GetBlockTypesResponse {
 	return m0
 }
 
+type PingRequest struct {
+	state         protoimpl.MessageState `protogen:"opaque.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingRequest) Reset() {
+	*x = PingRequest{}
+	mi := &file_internal_proto_storage_storage_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingRequest) ProtoMessage() {}
+
+func (x *PingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_storage_storage_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+type PingRequest_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+}
+
+func (b0 PingRequest_builder) Build() *PingRequest {
+	m0 := &PingRequest{}
+	b, x := &b0, m0
+	_, _ = b, x
+	return m0
+}
+
+type PingResponse struct {
+	state         protoimpl.MessageState `protogen:"opaque.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingResponse) Reset() {
+	*x = PingResponse{}
+	mi := &file_internal_proto_storage_storage_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingResponse) ProtoMessage() {}
+
+func (x *PingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_storage_storage_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+type PingResponse_builder struct {
+	_ [0]func() // Prevents comparability and use of unkeyed literals for the builder.
+
+}
+
+func (b0 PingResponse_builder) Build() *PingResponse {
+	m0 := &PingResponse{}
+	b, x := &b0, m0
+	_, _ = b, x
+	return m0
+}
+
 var File_internal_proto_storage_storage_proto protoreflect.FileDescriptor
 
 const file_internal_proto_storage_storage_proto_rawDesc = "" +
@@ -1023,7 +1109,9 @@ const file_internal_proto_storage_storage_proto_rawDesc = "" +
 	"\x14GetBlockTypesRequest\"L\n" +
 	"\x15GetBlockTypesResponse\x123\n" +
 	"\vblock_types\x18\x01 \x03(\v2\x12.storage.BlockTypeR\n" +
-	"blockTypes*<\n" +
+	"blockTypes\"\r\n" +
+	"\vPingRequest\"\x0e\n" +
+	"\fPingResponse*<\n" +
 	"\n" +
 	"EncProfile\x12\x0e\n" +
 	"\n" +
@@ -1031,14 +1119,15 @@ const file_internal_proto_storage_storage_proto_rawDesc = "" +
 	"\n" +
 	"PROFILE_V2\x10\x01\x12\x0e\n" +
 	"\n" +
-	"PROFILE_V3\x10\x022\x86\x02\n" +
+	"PROFILE_V3\x10\x022\xbb\x02\n" +
 	"\x0eStorageService\x12N\n" +
 	"\rSaveDataBlock\x12\x1d.storage.SaveDataBlockRequest\x1a\x1e.storage.SaveDataBlockResponse\x12S\n" +
 	"\x0eListDataBlocks\x12\x1e.storage.ListDataBlocksRequest\x1a\x1f.storage.ListDataBlocksResponse0\x01\x12O\n" +
-	"\x0eListBlockTypes\x12\x1d.storage.GetBlockTypesRequest\x1a\x1e.storage.GetBlockTypesResponseB\x18Z\x16internal/proto/storageb\beditionsp\xe9\a"
+	"\x0eListBlockTypes\x12\x1d.storage.GetBlockTypesRequest\x1a\x1e.storage.GetBlockTypesResponse\x123\n" +
+	"\x04Ping\x12\x14.storage.PingRequest\x1a\x15.storage.PingResponseB\x18Z\x16internal/proto/storageb\beditionsp\xe9\a"
 
 var file_internal_proto_storage_storage_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_internal_proto_storage_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_internal_proto_storage_storage_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_internal_proto_storage_storage_proto_goTypes = []any{
 	(EncProfile)(0),                // 0: storage.EncProfile
 	(*ListDataBlocksRequest)(nil),  // 1: storage.ListDataBlocksRequest
@@ -1049,24 +1138,28 @@ var file_internal_proto_storage_storage_proto_goTypes = []any{
 	(*BlockType)(nil),              // 6: storage.BlockType
 	(*GetBlockTypesRequest)(nil),   // 7: storage.GetBlockTypesRequest
 	(*GetBlockTypesResponse)(nil),  // 8: storage.GetBlockTypesResponse
+	(*PingRequest)(nil),            // 9: storage.PingRequest
+	(*PingResponse)(nil),           // 10: storage.PingResponse
 }
 var file_internal_proto_storage_storage_proto_depIdxs = []int32{
-	0, // 0: storage.DataBlock.profile:type_name -> storage.EncProfile
-	6, // 1: storage.DataBlock.type:type_name -> storage.BlockType
-	0, // 2: storage.SaveDataBlockRequest.profile:type_name -> storage.EncProfile
-	2, // 3: storage.ListDataBlocksResponse.data_blocks:type_name -> storage.DataBlock
-	6, // 4: storage.GetBlockTypesResponse.block_types:type_name -> storage.BlockType
-	3, // 5: storage.StorageService.SaveDataBlock:input_type -> storage.SaveDataBlockRequest
-	1, // 6: storage.StorageService.ListDataBlocks:input_type -> storage.ListDataBlocksRequest
-	7, // 7: storage.StorageService.ListBlockTypes:input_type -> storage.GetBlockTypesRequest
-	4, // 8: storage.StorageService.SaveDataBlock:output_type -> storage.SaveDataBlockResponse
-	5, // 9: storage.StorageService.ListDataBlocks:output_type -> storage.ListDataBlocksResponse
-	8, // 10: storage.StorageService.ListBlockTypes:output_type -> storage.GetBlockTypesResponse
-	8, // [8:11] is the sub-list for method output_type
-	5, // [5:8] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	0,  // 0: storage.DataBlock.profile:type_name -> storage.EncProfile
+	6,  // 1: storage.DataBlock.type:type_name -> storage.BlockType
+	0,  // 2: storage.SaveDataBlockRequest.profile:type_name -> storage.EncProfile
+	2,  // 3: storage.ListDataBlocksResponse.data_blocks:type_name -> storage.DataBlock
+	6,  // 4: storage.GetBlockTypesResponse.block_types:type_name -> storage.BlockType
+	3,  // 5: storage.StorageService.SaveDataBlock:input_type -> storage.SaveDataBlockRequest
+	1,  // 6: storage.StorageService.ListDataBlocks:input_type -> storage.ListDataBlocksRequest
+	7,  // 7: storage.StorageService.ListBlockTypes:input_type -> storage.GetBlockTypesRequest
+	9,  // 8: storage.StorageService.Ping:input_type -> storage.PingRequest
+	4,  // 9: storage.StorageService.SaveDataBlock:output_type -> storage.SaveDataBlockResponse
+	5,  // 10: storage.StorageService.ListDataBlocks:output_type -> storage.ListDataBlocksResponse
+	8,  // 11: storage.StorageService.ListBlockTypes:output_type -> storage.GetBlockTypesResponse
+	10, // 12: storage.StorageService.Ping:output_type -> storage.PingResponse
+	9,  // [9:13] is the sub-list for method output_type
+	5,  // [5:9] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_internal_proto_storage_storage_proto_init() }
@@ -1080,7 +1173,7 @@ func file_internal_proto_storage_storage_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_proto_storage_storage_proto_rawDesc), len(file_internal_proto_storage_storage_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -22,6 +22,7 @@ const (
 	StorageService_SaveDataBlock_FullMethodName  = "/storage.StorageService/SaveDataBlock"
 	StorageService_ListDataBlocks_FullMethodName = "/storage.StorageService/ListDataBlocks"
 	StorageService_ListBlockTypes_FullMethodName = "/storage.StorageService/ListBlockTypes"
+	StorageService_Ping_FullMethodName           = "/storage.StorageService/Ping"
 )
 
 // StorageServiceClient is the client API for StorageService service.
@@ -36,6 +37,8 @@ type StorageServiceClient interface {
 	ListDataBlocks(ctx context.Context, in *ListDataBlocksRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ListDataBlocksResponse], error)
 	// ListBlockTypes returns a list of available block types.
 	ListBlockTypes(ctx context.Context, in *GetBlockTypesRequest, opts ...grpc.CallOption) (*GetBlockTypesResponse, error)
+	// Ping checks the connectivity with the storage service.
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 }
 
 type storageServiceClient struct {
@@ -85,6 +88,16 @@ func (c *storageServiceClient) ListBlockTypes(ctx context.Context, in *GetBlockT
 	return out, nil
 }
 
+func (c *storageServiceClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, StorageService_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // StorageServiceServer is the server API for StorageService service.
 // All implementations must embed UnimplementedStorageServiceServer
 // for forward compatibility.
@@ -97,6 +110,8 @@ type StorageServiceServer interface {
 	ListDataBlocks(*ListDataBlocksRequest, grpc.ServerStreamingServer[ListDataBlocksResponse]) error
 	// ListBlockTypes returns a list of available block types.
 	ListBlockTypes(context.Context, *GetBlockTypesRequest) (*GetBlockTypesResponse, error)
+	// Ping checks the connectivity with the storage service.
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	mustEmbedUnimplementedStorageServiceServer()
 }
 
@@ -115,6 +130,9 @@ func (UnimplementedStorageServiceServer) ListDataBlocks(*ListDataBlocksRequest, 
 }
 func (UnimplementedStorageServiceServer) ListBlockTypes(context.Context, *GetBlockTypesRequest) (*GetBlockTypesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBlockTypes not implemented")
+}
+func (UnimplementedStorageServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
 }
 func (UnimplementedStorageServiceServer) mustEmbedUnimplementedStorageServiceServer() {}
 func (UnimplementedStorageServiceServer) testEmbeddedByValue()                        {}
@@ -184,6 +202,24 @@ func _StorageService_ListBlockTypes_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StorageService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StorageServiceServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StorageService_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StorageServiceServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // StorageService_ServiceDesc is the grpc.ServiceDesc for StorageService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -198,6 +234,10 @@ var StorageService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListBlockTypes",
 			Handler:    _StorageService_ListBlockTypes_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _StorageService_Ping_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
