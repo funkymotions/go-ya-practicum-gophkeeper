@@ -11,19 +11,14 @@ import (
 	"go.uber.org/zap"
 )
 
-type userRepository interface {
-	ports.UserRepositoryReader
-	ports.UserRepositoryWriter
-}
-
 type authService struct {
-	userRepository userRepository
+	userRepository ports.UserRepository
 	logger         *zap.SugaredLogger
 	jwtSecret      []byte
 }
 
 type AuthServiceArgs struct {
-	UserRepository userRepository
+	UserRepository ports.UserRepository
 	Logger         *zap.SugaredLogger
 	JWTSecret      []byte
 }
@@ -39,13 +34,13 @@ func NewAuthService(args AuthServiceArgs) *authService {
 }
 
 func (s *authService) Register(username, password string) (string, error) {
-	_, err := s.userRepository.ReadUserByUsername(username)
+	_, err := s.userRepository.ReadByUsername(username)
 	if err != nil {
 		if errors.Is(err, apperror.DBErrorNoRows) {
 			// TODO: app pepper from config for paswword hasing
 			passwordHash, err := utils.HashPassword([]byte(password))
 			if err != nil {
-				s.logger.Error("failed to hash password", "error", err)
+				s.logger.Errorw("failed to hash password", "error", err)
 
 				return "", apperror.AuthErrorGeneric
 			}
@@ -55,19 +50,21 @@ func (s *authService) Register(username, password string) (string, error) {
 				PasswordHash: hex.EncodeToString(passwordHash),
 			}
 
-			user, err = s.userRepository.CreateUser(user)
+			user, err = s.userRepository.Create(user)
 			if err != nil {
-				s.logger.Error(err)
+				s.logger.Errorw("failed to create user", "error", err)
 
 				return "", apperror.AuthCreateUserError
 			}
 
 			token, err := utils.IssueJWTToken(user.ID, s.jwtSecret)
 			if err != nil {
-				s.logger.Error("failed to issue JWT token", "error", err)
+				s.logger.Errorw("failed to issue JWT token", "error", err)
 
 				return "", apperror.AuthErrorGeneric
 			}
+
+			s.logger.Infow("User registered successfully", "username", username)
 
 			return string(token), nil
 		}
@@ -79,7 +76,7 @@ func (s *authService) Register(username, password string) (string, error) {
 }
 
 func (s *authService) Authenticate(username, password string) (string, error) {
-	user, err := s.userRepository.ReadUserByUsername(username)
+	user, err := s.userRepository.ReadByUsername(username)
 	if errors.Is(err, apperror.DBErrorNoRows) {
 		return "", apperror.AuthUserNotExistsError
 	}
@@ -97,10 +94,12 @@ func (s *authService) Authenticate(username, password string) (string, error) {
 
 	token, err := utils.IssueJWTToken(user.ID, s.jwtSecret)
 	if err != nil {
-		s.logger.Error("failed to issue JWT token", "error", err)
+		s.logger.Errorw("failed to issue JWT token", "error", err)
 
 		return "", err
 	}
+
+	s.logger.Infow("User authenticated successfully", "username", username)
 
 	return string(token), nil
 }

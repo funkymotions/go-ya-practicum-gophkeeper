@@ -1,4 +1,4 @@
-package client
+package view
 
 import (
 	"fmt"
@@ -8,31 +8,37 @@ import (
 )
 
 type storageModel struct {
-	PrevModel types.NamedTeaModel
-	State     *types.State
-	choices   []string
-	selected  map[int]struct{}
-	cursor    int
-	title     string
+	PrevModel     types.NamedTeaModel
+	state         *types.State
+	choices       []string
+	selected      map[int]struct{}
+	cursor        int
+	title         string
+	addBlockView  types.NamedTeaModel
+	listBlockView types.NamedTeaModel
 }
 
-func NewStorageModel(state *types.State) *storageModel {
+type StorageModelArgs struct {
+	State          *types.State
+	AddBlockModel  types.NamedTeaModel
+	ListBlockModel types.NamedTeaModel
+}
+
+func NewStorageModel(args StorageModelArgs) *storageModel {
 	s := &storageModel{
-		title:    "Storage Menu",
-		selected: make(map[int]struct{}),
-		State:    state,
-		choices:  []string{"View Blocks", "Add Block"},
+		title:         "Storage Menu",
+		selected:      make(map[int]struct{}),
+		state:         args.State,
+		choices:       []string{"View Blocks", "Add Block"},
+		addBlockView:  args.AddBlockModel,
+		listBlockView: args.ListBlockModel,
 	}
 
 	return s
 }
 
 func (sm *storageModel) GetTitle() string {
-	if sm.State.IsAuthorized {
-		return sm.title
-	} else {
-		return "==Auth required== " + sm.title
-	}
+	return sm.title
 }
 
 func (sm *storageModel) SetPrevModel(m types.NamedTeaModel) {
@@ -63,16 +69,12 @@ func (sm *storageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter", " ":
 			switch sm.cursor {
-			case 0:
-				blockListView := NewBlockListView(sm.State)
-				blockListView.SetPrevModel(sm)
-
-				return blockListView, blockListView.Init()
 			case 1:
-				addBlockView := NewAddBlockView(sm.State)
-				addBlockView.SetPrevModel(sm)
-
-				return addBlockView, addBlockView.Init()
+				sm.addBlockView.SetPrevModel(sm)
+				return sm.addBlockView, sm.addBlockView.Init()
+			case 0:
+				sm.listBlockView.SetPrevModel(sm)
+				return sm.listBlockView, sm.listBlockView.Init()
 			}
 		}
 	}
@@ -81,7 +83,7 @@ func (sm *storageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (sm *storageModel) View() string {
-	s := "Storage Menu:\n\n"
+	s := "== Storage Menu ==\n\n"
 	for i, choice := range sm.choices {
 		cursor := " " // no cursor
 		if sm.cursor == i {
@@ -91,7 +93,7 @@ func (sm *storageModel) View() string {
 		s += fmt.Sprintf("%s %s\n", cursor, choice)
 	}
 
-	s += "\nPress q to quit.\n"
+	s += "\n(Press 'ESC' to go back.)\n"
 
 	return s
 }

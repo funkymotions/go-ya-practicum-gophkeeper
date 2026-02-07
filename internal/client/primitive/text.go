@@ -1,6 +1,7 @@
-package blocks
+package primitive
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -11,7 +12,7 @@ import (
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/utils"
 )
 
-type SaveBlockFn func(title string, typeID int, profile utils.ScryptProfile, encryptedData, salt, nonce []byte) error
+type SaveBlockFn func(ctx context.Context, b model.Block, errChan chan error)
 
 type TextBlock struct {
 	title       string
@@ -21,9 +22,13 @@ type TextBlock struct {
 	textarea    textarea.Model
 	focused     int
 	isSaved     bool
+	isSaving    bool
 	state       *types.State
 	err         error
+	errChan     chan error
 	saveBlockCb SaveBlockFn
+	ctx         context.Context
+	cancelFn    context.CancelFunc
 }
 
 type BlockArgs struct {
@@ -69,6 +74,7 @@ func (r *TextBlock) SetPrevModel(model types.NamedTeaModel) {
 }
 
 func (r *TextBlock) Init() tea.Cmd {
+	r.ctx, r.cancelFn = context.WithCancel(context.Background())
 	return textinput.Blink
 }
 
@@ -83,6 +89,7 @@ func (r *TextBlock) UpdateTextBlock(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "esc":
+			r.cancelFn()
 			return r.PrevModel, nil
 		case "enter":
 			if !r.textarea.Focused() {
@@ -91,37 +98,53 @@ func (r *TextBlock) UpdateTextBlock(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if r.focused < len(r.inputs) {
 				r.inputs[r.focused].Focus()
 			}
-			if r.focused == len(r.inputs) && r.textarea.Focused() == false {
+			if r.focused == len(r.inputs) && r.textarea.Focused() == false && r.isSaved == false {
 				title := r.inputs[0].Value()
 				password := r.inputs[1].Value()
 				data := r.textarea.Value()
-
 				key, err := utils.ExtractKeyFromPassword(password, utils.ProfileMedium)
 				if err != nil {
 					r.err = err
-
 					return r, nil
 				}
 
-				encrypted, nonce, err := utils.EncryptWithPassword([]byte(data), []byte(data), key)
+				encrypted, nonce, err := utils.EncryptWithPassword([]byte(password), []byte(data), key)
 				if err != nil {
 					r.err = err
 
 					return r, nil
 				}
 
-				err = r.saveBlockCb(title, r.Type.ID, utils.ProfileMedium, encrypted, key.Salt, nonce)
-				if err != nil {
-					r.err = err
-
-					return r, nil
+				r.errChan = make(chan error)
+				b := model.Block{
+					Title:   title,
+					TypeID:  r.Type.ID,
+					Profile: string(utils.ProfileMedium),
+					Data:    encrypted,
+					Salt:    key.Salt,
+					Nonce:   nonce,
+					Type:    &r.Type,
 				}
 
-				r.isSaved = true
+				r.isSaving = true
+				go r.saveBlockCb(r.ctx, b, r.errChan)
 
-				return r, nil
+				return r, listenForSaveBlockResult(r.ctx, r.errChan)
 			}
 		}
+	case saveBlockResultMsg:
+		err := error(msg.err)
+		defer close(r.errChan)
+		if err != nil {
+			r.err = err
+			r.isSaved = false
+			r.isSaving = false
+			return r, nil
+		}
+
+		r.isSaving = false
+		r.isSaved = true
+		return r, nil
 	}
 
 	var cmd tea.Cmd
@@ -161,6 +184,10 @@ func (r *TextBlock) View() string {
 	s := fmt.Sprintf("== Creating new block: %s ==\n\n", r.Type.TypeName)
 	if r.err != nil {
 		s += fmt.Sprintf("Error: %s\n\n", r.err.Error())
+	}
+	if r.isSaving {
+		s += "Saving block...\n"
+		return s
 	}
 	if r.isSaved {
 		s += "Block saved successfully! Press ESC to go back.\n"

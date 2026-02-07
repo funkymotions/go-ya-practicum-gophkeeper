@@ -1,4 +1,4 @@
-package client
+package view
 
 import (
 	"fmt"
@@ -41,8 +41,6 @@ func NewBlockModel(prevModel types.NamedTeaModel) *blockModel {
 
 func (bm *blockModel) SaveFileBlockToDisk(blockName string, content []byte) error {
 	mimeType := http.DetectContentType(content[:512])
-	fmt.Printf("Detected MIME type: %s\n\n\n", mimeType)
-
 	fileExt, err := mime.ExtensionsByType(mimeType)
 	if err != nil || len(fileExt) == 0 {
 		return fmt.Errorf("Could not determine file extension\n\n\n")
@@ -79,25 +77,22 @@ func (bm *blockModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			password := bm.passInput.Value()
 			decrypted, err := utils.DecryptWithPassword(
 				bm.block.Data,
-				[]byte(bm.block.Nonce),
+				bm.block.Nonce,
 				[]byte(password),
-				[]byte(bm.block.Salt),
+				bm.block.Salt,
 				utils.ScryptProfile(bm.block.Profile),
 			)
 			if err != nil {
 				bm.err = fmt.Errorf("Invalid password")
 				bm.passInput.Reset()
-
 				return bm, nil
 			}
 
 			bm.decryptedText = decrypted
-
 			if bm.block.Type.TypeName == string(model.TypeNameFile) {
 				err = bm.SaveFileBlockToDisk(bm.block.Title, decrypted)
 				if err != nil {
 					bm.err = err
-
 					return bm, nil
 				}
 			}
@@ -122,7 +117,6 @@ func (bm *blockModel) View() string {
 		s := "File block has been decrypted and saved to disk.\n"
 		s += errText
 		s += "\n\nPress 'esc' to go back.\n"
-
 		return s
 	}
 
@@ -139,7 +133,7 @@ func (bm *blockModel) View() string {
 		s += bm.passInput.View()
 	}
 
-	s += "\n\nPress 'esc' to go back.\n"
+	s += "\n\n(Press 'ESC' to go back.)\n"
 
 	return s
 }

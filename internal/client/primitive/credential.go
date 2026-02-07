@@ -1,6 +1,7 @@
-package blocks
+package primitive
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -21,7 +22,11 @@ type credentialsBlock struct {
 	PrevModel   types.NamedTeaModel
 	saveBlockCb SaveBlockFn
 	err         error
+	errChan     chan error
 	isSaved     bool
+	isSaving    bool
+	ctx         context.Context
+	cancelFn    context.CancelFunc
 }
 
 func NewCredentialsBlock(args BlockArgs) *credentialsBlock {
@@ -59,6 +64,8 @@ func NewCredentialsBlock(args BlockArgs) *credentialsBlock {
 }
 
 func (c *credentialsBlock) Init() tea.Cmd {
+	c.ctx, c.cancelFn = context.WithCancel(context.Background())
+
 	return textinput.Blink
 }
 
@@ -71,6 +78,7 @@ func (c *credentialsBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
+			c.cancelFn()
 			return c.PrevModel, nil
 		case "enter":
 			if c.focused == len(c.inputs)-1 {
@@ -81,35 +89,51 @@ func (c *credentialsBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				key, err := utils.ExtractKeyFromPassword(masterPassword, utils.ProfileMedium)
 				if err != nil {
 					c.err = err
-
 					return c, nil
 				}
 
 				payload := fmt.Sprintf("username:%s / password:%s", c.Username, c.Password)
-
 				encrypted, nonce, err := utils.EncryptWithPassword([]byte(masterPassword), []byte(payload), key)
 				if err != nil {
 					c.err = err
-
 					return c, nil
 				}
 
-				err = c.saveBlockCb(c.Title, c.Type.ID, utils.ProfileMedium, encrypted, key.Salt, nonce)
-				if err != nil {
-					c.err = err
-
-					return c, nil
+				c.errChan = make(chan error)
+				b := model.Block{
+					Title:   c.Title,
+					TypeID:  c.Type.ID,
+					Data:    encrypted,
+					Salt:    key.Salt,
+					Nonce:   nonce,
+					Profile: string(utils.ProfileMedium),
+					Type:    &c.Type,
 				}
 
-				c.isSaved = true
+				c.isSaving = true
+				go c.saveBlockCb(c.ctx, b, c.errChan)
 
-				return c, nil
+				return c, listenForSaveBlockResult(c.ctx, c.errChan)
 			}
 
 			c.focused++
 			c.inputs[c.focused-1].Blur()
 			c.inputs[c.focused].Focus()
 		}
+	case saveBlockResultMsg:
+		close(c.errChan)
+		err := error(msg.err)
+		if err != nil {
+			c.err = err
+			c.isSaved = false
+			c.isSaving = false
+
+			return c, nil
+		}
+		c.isSaving = false
+		c.isSaved = true
+
+		return c, nil
 	}
 
 	var cmd tea.Cmd
@@ -121,6 +145,10 @@ func (c *credentialsBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (c *credentialsBlock) View() string {
 	if c.isSaved {
 		return "Credentials block saved successfully! Press 'ESC' to go back.\n"
+	}
+
+	if c.isSaving {
+		return "Saving block...\n"
 	}
 
 	s := "Enter your credentials:\n\n"

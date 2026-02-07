@@ -1,6 +1,7 @@
-package blocks
+package primitive
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -22,8 +23,12 @@ type BankCardBlock struct {
 	inputs      []textinput.Model
 	focused     int
 	isSaved     bool
+	isSaving    bool
 	err         error
+	errChan     chan error
 	saveBlockCb SaveBlockFn
+	ctx         context.Context
+	cancelFn    context.CancelFunc
 }
 
 func NewBankCardBlock(args BlockArgs) *BankCardBlock {
@@ -76,6 +81,8 @@ func NewBankCardBlock(args BlockArgs) *BankCardBlock {
 }
 
 func (bcb *BankCardBlock) Init() tea.Cmd {
+	bcb.ctx, bcb.cancelFn = context.WithCancel(context.Background())
+
 	return textinput.Blink
 }
 
@@ -92,6 +99,7 @@ func (bcb *BankCardBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
+			bcb.cancelFn()
 			return bcb.PrevModel, nil
 		case "enter":
 			if bcb.focused == len(bcb.inputs)-1 {
@@ -101,7 +109,6 @@ func (bcb *BankCardBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				bcb.CardHolder = bcb.inputs[3].Value()
 				bcb.CVV = bcb.inputs[4].Value()
 				masterPassword := bcb.inputs[5].Value()
-
 				key, err := utils.ExtractKeyFromPassword(masterPassword, utils.ProfileMedium)
 				if err != nil {
 					bcb.err = err
@@ -125,28 +132,40 @@ func (bcb *BankCardBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return bcb, nil
 				}
 
-				err = bcb.saveBlockCb(
-					bcb.Title,
-					bcb.Type.ID,
-					utils.ProfileMedium,
-					ciphertext,
-					key.Salt,
-					nonce,
-				)
-				if err != nil {
-					bcb.err = err
-
-					return bcb, nil
+				bcb.errChan = make(chan error)
+				b := model.Block{
+					Title:   bcb.Title,
+					TypeID:  bcb.Type.ID,
+					Data:    ciphertext,
+					Salt:    key.Salt,
+					Nonce:   nonce,
+					Profile: string(utils.ProfileMedium),
+					Type:    &bcb.Type,
 				}
 
-				bcb.isSaved = true
+				bcb.isSaving = true
+				go bcb.saveBlockCb(bcb.ctx, b, bcb.errChan)
 
-				return bcb, nil
+				return bcb, listenForSaveBlockResult(bcb.ctx, bcb.errChan)
 			}
 
 			bcb.focused++
 			bcb.inputs[bcb.focused].Focus()
 		}
+	case saveBlockResultMsg:
+		close(bcb.errChan)
+		err := error(msg.err)
+		if err != nil {
+			bcb.err = err
+			bcb.isSaved = false
+			bcb.isSaving = false
+
+			return bcb, nil
+		}
+		bcb.isSaved = true
+		bcb.isSaving = false
+
+		return bcb, nil
 	}
 
 	var cmd tea.Cmd
@@ -156,6 +175,9 @@ func (bcb *BankCardBlock) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (bcb *BankCardBlock) View() string {
+	if bcb.isSaving {
+		return "Saving block...\n"
+	}
 	if bcb.isSaved {
 		return "Bank Card block saved successfully!\n\nPress 'ESC' key to return."
 	}
