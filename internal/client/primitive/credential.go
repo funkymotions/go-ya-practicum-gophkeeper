@@ -49,7 +49,7 @@ func NewCredentialsBlock(args BlockArgs) *credentialsBlock {
 	passwordInput.Width = 20
 
 	masterPasswordInput := textinput.New()
-	masterPasswordInput.Placeholder = "Master Password"
+	masterPasswordInput.Placeholder = "Block Password"
 	masterPasswordInput.EchoMode = textinput.EchoPassword
 	masterPasswordInput.EchoCharacter = '•'
 	masterPasswordInput.CharLimit = 64

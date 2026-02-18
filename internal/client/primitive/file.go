@@ -44,7 +44,7 @@ func NewFileBlock(args BlockArgs) *FileBlock {
 	inputFilePath.Width = 50
 
 	masterPasswordInput := textinput.New()
-	masterPasswordInput.Placeholder = "Master Password"
+	masterPasswordInput.Placeholder = "Block Password"
 	masterPasswordInput.EchoMode = textinput.EchoPassword
 	masterPasswordInput.EchoCharacter = '•'
 	masterPasswordInput.CharLimit = 64
@@ -164,7 +164,7 @@ func (fb *FileBlock) View() string {
 
 	s += "Description: " + fb.inputs[0].View() + "\n"
 	s += "File Path: " + fb.inputs[1].View() + "\n"
-	s += "Master Password: " + fb.inputs[2].View() + "\n"
+	s += "Block Password: " + fb.inputs[2].View() + "\n"
 
 	s += "\nPress Enter to save the block or ESC to go back.\n"
 

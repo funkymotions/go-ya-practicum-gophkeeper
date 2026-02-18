@@ -59,7 +59,7 @@ func NewBankCardBlock(args BlockArgs) *BankCardBlock {
 	cvvInput.Width = 5
 
 	masterPasswordInput := textinput.New()
-	masterPasswordInput.Placeholder = "Master Password"
+	masterPasswordInput.Placeholder = "Block Password"
 	masterPasswordInput.EchoMode = textinput.EchoPassword
 	masterPasswordInput.EchoCharacter = '•'
 	masterPasswordInput.CharLimit = 64

@@ -206,10 +206,6 @@ func (app *ClientApp) StartBlockFetching() {
 				if app.state.IsOnline {
 					app.services.sub.Unsubscribe()
 				}
-				close(app.blocksChan)
-				close(app.errUpdateChan)
-				close(app.blocksUpdateChan)
-				close(app.blocksErrChan)
 				app.isStreamDone <- struct{}{}
 				return
 			case blocks := <-app.blocksChan:
