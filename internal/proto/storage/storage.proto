@@ -51,6 +51,10 @@ message GetBlockTypesResponse {
   repeated BlockType  block_types = 1;
 }
 
+message PingRequest {}
+
+message PingResponse {}
+
 // StorageService manages user storage and private keys.
 service StorageService {
 
@@ -62,4 +66,7 @@ service StorageService {
 
   // ListBlockTypes returns a list of available block types.
   rpc ListBlockTypes(GetBlockTypesRequest) returns (GetBlockTypesResponse);
+
+  // Ping checks the connectivity with the storage service.
+  rpc Ping(PingRequest) returns (PingResponse);
 }

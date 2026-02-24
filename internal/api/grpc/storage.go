@@ -20,15 +20,20 @@ type storageGRPCServer struct {
 	storage.UnimplementedStorageServiceServer
 	storageService      ports.StorageService
 	subscriptionService ports.SubscriptionService
+	typesService        ports.TypesService
+	isAppExiting        chan struct{}
+	isDone              chan struct{}
 }
 
 func NewStorageGRPCServer(
 	service ports.StorageService,
 	subscriptionService ports.SubscriptionService,
+	typesService ports.TypesService,
 ) *storageGRPCServer {
 	return &storageGRPCServer{
 		storageService:      service,
 		subscriptionService: subscriptionService,
+		typesService:        typesService,
 	}
 }
 
@@ -36,7 +41,7 @@ func (s *storageGRPCServer) SaveDataBlock(
 	ctx context.Context,
 	req *storage.SaveDataBlockRequest,
 ) (*storage.SaveDataBlockResponse, error) {
-	userID := ctx.Value(interceptor.UserIDKey("userID"))
+	userID := ctx.Value(interceptor.UserIDKey)
 	userIDInt, ok := userID.(int)
 	if !ok {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid user ID")
@@ -70,7 +75,7 @@ func (s *storageGRPCServer) ListDataBlocks(
 	// then, a new subscription can be to fetch a data updates
 	ctxWithTimeout, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	userID := ctx.Value(interceptor.UserIDKey("userID"))
+	userID := ctx.Value(interceptor.UserIDKey)
 	clientID := req.GetClientId()
 	userIDInt, ok := userID.(int)
 	if !ok {
@@ -130,6 +135,8 @@ func (s *storageGRPCServer) ListDataBlocks(
 			if err := send(); err != nil {
 				return err
 			}
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }
@@ -138,7 +145,7 @@ func (s *storageGRPCServer) ListBlockTypes(
 	ctx context.Context,
 	req *storage.GetBlockTypesRequest,
 ) (*storage.GetBlockTypesResponse, error) {
-	types, err := s.storageService.GetBlockTypes()
+	types, err := s.typesService.ReadAllTypes()
 	var appError *apperror.AppError
 	if err != nil && errors.As(err, &appError) {
 		return nil, status.Errorf(appError.GRPCStatus, "%s", appError.Message)
@@ -166,4 +173,11 @@ func (s *storageGRPCServer) ListBlockTypes(
 	resp := b.Build()
 
 	return resp, nil
+}
+
+func (s *storageGRPCServer) Ping(
+	ctx context.Context,
+	req *storage.PingRequest,
+) (*storage.PingResponse, error) {
+	return &storage.PingResponse{}, nil
 }

@@ -13,6 +13,6 @@ type Database struct {
 
 func (d *Database) GetDSN() string {
 	dsn := "postgres://" + d.User + ":" + d.Password + "@" + d.Host + ":" + fmt.Sprint(d.Port) + "/" + d.DBName + "?sslmode=disable"
-	fmt.Printf("DSN: %s\n", dsn)
+
 	return dsn
 }

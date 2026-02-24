@@ -2,7 +2,6 @@ package interceptor
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/utils"
 	"google.golang.org/grpc"
@@ -11,7 +10,9 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type UserIDKey string
+type contextKey string
+
+const UserIDKey contextKey = "userID"
 
 type wrappedServerStream struct {
 	grpc.ServerStream
@@ -51,7 +52,7 @@ func StreamAuthInterceptor(secret []byte) grpc.StreamServerInterceptor {
 			return err
 		}
 
-		newCtx := context.WithValue(ss.Context(), UserIDKey("userID"), userID)
+		newCtx := context.WithValue(ss.Context(), UserIDKey, userID)
 		wrappedSrvStreamCtx := &wrappedServerStream{
 			ServerStream: ss,
 			ctx:          newCtx,
@@ -68,7 +69,6 @@ func UnaryAuthInterceptor(secret []byte) grpc.UnaryServerInterceptor {
 	}
 
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-		fmt.Printf("intercepting method: %s\n", info.FullMethod)
 		if _, ok := authEntrypointsToSkip[info.FullMethod]; ok {
 			return handler(ctx, req)
 		}
@@ -83,7 +83,7 @@ func UnaryAuthInterceptor(secret []byte) grpc.UnaryServerInterceptor {
 			return nil, err
 		}
 
-		ctx = context.WithValue(ctx, UserIDKey("userID"), userID)
+		ctx = context.WithValue(ctx, UserIDKey, userID)
 
 		return handler(ctx, req)
 	}

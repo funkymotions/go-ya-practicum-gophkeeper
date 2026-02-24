@@ -4,25 +4,22 @@ import (
 	"database/sql"
 
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/apperror"
-	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/infrastructure/database"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/model"
-	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/ports"
 )
 
 type userRepository struct {
-	db *database.SQLDriver
+	*SQLRepository[model.User]
 }
 
-var _ ports.UserRepositoryReader = (*userRepository)(nil)
-var _ ports.UserRepositoryWriter = (*userRepository)(nil)
+var _ Repository[model.User] = (*userRepository)(nil)
 
-func NewUserRepository(db *database.SQLDriver) *userRepository {
+func NewUserRepository(r *SQLRepository[model.User]) *userRepository {
 	return &userRepository{
-		db: db,
+		SQLRepository: r,
 	}
 }
 
-func (u *userRepository) ReadUserByID(userID int32) (*model.User, error) {
+func (u *userRepository) ReadByID(userID int) (*model.User, error) {
 	sqlText := `SELECT id, username, password_hash, created_at FROM users WHERE id = $1;`
 	var user model.User
 	err := u.db.Conn.QueryRow(sqlText, userID).Scan(
@@ -38,26 +35,7 @@ func (u *userRepository) ReadUserByID(userID int32) (*model.User, error) {
 	return &user, nil
 }
 
-func (u userRepository) ReadUserByUsername(username string) (*model.User, error) {
-	sqlText := `SELECT id, username, password_hash, created_at FROM users WHERE username = $1;`
-	var user model.User
-	err := u.db.Conn.QueryRow(sqlText, username).Scan(
-		&user.ID,
-		&user.Username,
-		&user.PasswordHash,
-		&user.CreatedAt,
-	)
-	if err == sql.ErrNoRows {
-		return nil, apperror.DBErrorNoRows
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
-}
-
-func (u *userRepository) CreateUser(user *model.User) (*model.User, error) {
+func (u *userRepository) Create(user *model.User) (*model.User, error) {
 	sqlText := `
 		INSERT INTO
 			users (
@@ -70,13 +48,56 @@ func (u *userRepository) CreateUser(user *model.User) (*model.User, error) {
 			$2,
 			NOW()
 		)
-		RETURNING id;`
+		RETURNING
+			id,
+			username,
+			password_hash,
+			created_at;`
 
-	err := u.db.Conn.QueryRow(
+	row := u.db.Conn.QueryRow(
 		sqlText,
 		user.Username,
 		user.PasswordHash,
-	).Scan(&user.ID)
+	)
+
+	result, err := u.scanRow(row)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, apperror.DBErrorNoRows
+		}
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (u *userRepository) ReadAll() ([]*model.User, error) {
+	sqlText := `SELECT id, username, password_hash, created_at FROM users;`
+	rows, err := u.db.Conn.Query(sqlText)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, apperror.DBErrorNoRows
+		}
+
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*model.User
+	for user := range ModelSeq(rows, u.scanRows) {
+		users = append(users, user)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+func (u *userRepository) ReadByUsername(username string) (*model.User, error) {
+	sqlText := `SELECT id, username, password_hash, created_at FROM users WHERE username = $1;`
+	row := u.db.Conn.QueryRow(sqlText, username)
+	result, err := u.scanRow(row)
 	if err == sql.ErrNoRows {
 		return nil, apperror.DBErrorNoRows
 	}
@@ -84,5 +105,35 @@ func (u *userRepository) CreateUser(user *model.User) (*model.User, error) {
 		return nil, err
 	}
 
-	return user, nil
+	return result, nil
+}
+
+func (u *userRepository) scanRows(rows *sql.Rows) (*model.User, error) {
+	var user model.User
+	err := rows.Scan(
+		&user.ID,
+		&user.Username,
+		&user.PasswordHash,
+		&user.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func (u *userRepository) scanRow(row *sql.Row) (*model.User, error) {
+	var user model.User
+	err := row.Scan(
+		&user.ID,
+		&user.Username,
+		&user.PasswordHash,
+		&user.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
 }

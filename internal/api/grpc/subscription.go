@@ -25,7 +25,7 @@ func (s *subscriptionGRPCServer) Subscribe(
 	ctx context.Context,
 	req *subscription.SubscribeRequest,
 ) (*subscription.SubscribeResponse, error) {
-	userIDRaw := ctx.Value(interceptor.UserIDKey("userID"))
+	userIDRaw := ctx.Value(interceptor.UserIDKey)
 	userID, ok := userIDRaw.(int)
 	if !ok {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid user ID")
@@ -40,7 +40,7 @@ func (s *subscriptionGRPCServer) Unsubscribe(
 	ctx context.Context,
 	req *subscription.UnsubscribeRequest,
 ) (*subscription.UnsubscribeResponse, error) {
-	userIDRaw := ctx.Value(interceptor.UserIDKey("userID"))
+	userIDRaw := ctx.Value(interceptor.UserIDKey)
 	userID, ok := userIDRaw.(int)
 	if !ok {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid user ID")

@@ -1,48 +1,46 @@
-package client
+package view
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/client/types"
-	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/infrastructure/grpc"
-	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/proto/auth"
-	"google.golang.org/protobuf/proto"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/ports"
+	"github.com/funkymotions/go-ya-practicum-gophkeeper/internal/utils"
 )
 
 type authViewType string
 
 const (
-	AuthView     authViewType = "auth"
-	RegisterView authViewType = "register"
+	AuthViewType     authViewType = "auth"
+	RegisterViewType authViewType = "register"
 )
 
 type authModel struct {
-	title      string
-	viewType   authViewType
-	inputs     []textinput.Model
-	PrevModel  types.NamedTeaModel
-	focused    int
-	grpcClient *grpc.GRPCClient
-	err        error
-	state      *types.State
+	title     string
+	viewType  authViewType
+	inputs    []textinput.Model
+	PrevModel types.NamedTeaModel
+	focused   int
+	service   ports.ClientAuthService
+	err       error
+	state     *types.State
 }
 
-type constructorArgs struct {
-	grpcClient *grpc.GRPCClient
-	viewType   authViewType
-	state      *types.State
+type AuthModelArgs struct {
+	Service  ports.ClientAuthService
+	ViewType authViewType
+	State    *types.State
 }
 
-func NewAuthModel(args constructorArgs) *authModel {
+func NewAuthModel(args AuthModelArgs) *authModel {
 	usernameTextInput := textinput.New()
 	passwordTextInput := textinput.New()
 	usernameTextInput.Placeholder = "Username"
-	usernameTextInput.Focus()
 	usernameTextInput.CharLimit = 32
 	usernameTextInput.Width = 20
+	usernameTextInput.Focus()
 
 	passwordTextInput.Placeholder = "Password"
 	passwordTextInput.EchoMode = textinput.EchoPassword
@@ -51,19 +49,19 @@ func NewAuthModel(args constructorArgs) *authModel {
 	passwordTextInput.Width = 20
 
 	var title string
-	switch args.viewType {
-	case RegisterView:
+	switch args.ViewType {
+	case RegisterViewType:
 		title = "Registration"
-	case AuthView:
+	case AuthViewType:
 		title = "Authorization"
 	}
 
 	return &authModel{
-		inputs:     []textinput.Model{usernameTextInput, passwordTextInput},
-		title:      title,
-		viewType:   args.viewType,
-		grpcClient: args.grpcClient,
-		state:      args.state,
+		inputs:   []textinput.Model{usernameTextInput, passwordTextInput},
+		title:    title,
+		viewType: args.ViewType,
+		service:  args.Service,
+		state:    args.State,
 	}
 }
 
@@ -101,49 +99,26 @@ func (rm *authModel) submit() error {
 
 	var token string
 	var err error
-	if rm.viewType == RegisterView {
-		token, err = rm.RegisterUser(username, password)
+	if rm.viewType == RegisterViewType {
+		token, err = rm.service.Register(username, password)
 	}
-	if rm.viewType == AuthView {
-		token, err = rm.Authenticate(username, password)
+	if rm.viewType == AuthViewType {
+		token, err = rm.service.Authenticate(username, password)
 	}
-
 	if err != nil {
 		return err
 	}
 
-	rm.state.IsAuthorized = true
 	rm.state.Token = token
+	rm.state.IsOnline = true
+	claims, err := utils.ParseUnverifiedJWT(token)
+	if err != nil {
+		return err
+	}
+
+	rm.state.UserID = claims.UserID
 
 	return nil
-}
-
-func (rm *authModel) RegisterUser(username, password string) (string, error) {
-	req := auth.RegisterRequest_builder{
-		Username: proto.String(username),
-		Password: proto.String(password),
-	}
-
-	resp, err := rm.grpcClient.AuthClient.Register(context.TODO(), req.Build())
-	if err != nil {
-		return "", err
-	}
-
-	return resp.GetToken(), nil
-}
-
-func (rm *authModel) Authenticate(username, password string) (string, error) {
-	request := &auth.AuthRequest_builder{
-		Username: proto.String(username),
-		Password: proto.String(password),
-	}
-
-	resp, err := rm.grpcClient.AuthClient.Authenticate(context.TODO(), request.Build())
-	if err != nil {
-		return "", err
-	}
-
-	return resp.GetToken(), nil
 }
 
 func (rm *authModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -156,6 +131,7 @@ func (rm *authModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return rm.PrevModel, nil
 		case tea.KeyEnter:
 			if rm.focused >= len(rm.inputs)-1 {
+				// TODO: now it's blocking, make it async using goroutines and channels
 				err := rm.submit()
 				if err != nil {
 					rm.err = err
@@ -168,6 +144,7 @@ func (rm *authModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			rm.focused++
 			rm.inputs[rm.focused].Focus()
+
 			return rm, nil
 		case tea.KeyCtrlC:
 			return rm, tea.Quit
@@ -188,7 +165,7 @@ func (rm *authModel) View() string {
 	s += errText
 	s += "\n Please enter your credentials \n\n"
 	s += rm.inputs[rm.focused].View()
-	s += "\n\n(Press Enter to submit, Esc to go back)\n"
+	s += "\n\n(Press 'ENTER' to submit, 'ESC' to go back.)\n"
 
 	return s
 }
